@@ -5,3 +5,6 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.100"
+rstest = "0.26.1"
+tracing = "0.1.43"
+tracing-subscriber = "0.3.22"
