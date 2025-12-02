@@ -34,6 +34,7 @@ fn is_odd(val: u32) -> bool {
     val.rem_euclid(2) != 0
 }
 
+/// constructs an integer with the given fragment repeated `nreps` times
 #[instrument(ret, level = "trace")]
 fn build_test_value(fragment: i64, rep_digits: u32, nreps: u32) -> Option<i64> {
     if fragment >= 10_i64.pow(rep_digits) {
@@ -49,6 +50,9 @@ fn build_test_value(fragment: i64, rep_digits: u32, nreps: u32) -> Option<i64> {
 impl Range {
     #[instrument(ret, level = "debug")]
     pub fn find_invalid_ids_2(&self) -> Option<HashSet<i64>> {
+        // use a hashset because we don't want to count e.g. two repetitions of
+        // 22 and 4 repetitions of 2 as different numbers -- they're both just
+        // `2222`
         let mut invalid_ids = HashSet::<i64>::default();
         let start_digits = self
             .start
@@ -61,42 +65,56 @@ impl Range {
             .expect("Couldn't calculate digits of range end")
             + 1;
         trace!(start_digits, end_digits);
+
+        // if a range crosses a digit boundary (e.g. 91-150), then we will need
+        // to conduct the search on both two digit numbers and 3 digit numbers.
         for total_digits in start_digits..=end_digits {
             trace!("searching for repetitions of values with {total_digits} digits");
-            for nreps in 2..=total_digits {
-                // check if the start range can be composed by `nreps` repeated numbers
-                if total_digits.is_multiple_of(nreps) {
-                    trace!("{total_digits} is a multiple of {nreps}");
-                    // the number of digits in each repeated number
-                    let rep_digits = total_digits / nreps;
-                    // find the starting digits of the start range
+
+            // the number must be repeated at least 2 times and at most
+            // `total_digits` times
+            for nrepetitions in 2..=total_digits {
+                // check if the start range can be composed by `nrepetitions`
+                // repeated numbers
+                if total_digits.is_multiple_of(nrepetitions) {
+                    // calculate the number of digits in each repeated number
+                    let rep_digits = total_digits / nrepetitions;
+                    // a 'mask' to select all digits after the first rep_digits
                     let end_mask = 10_i64.pow(start_digits - rep_digits);
-                    let mut start = self.start;
-                    let start_range_end_val = start % end_mask;
-                    let start_range_start_val = (start - start_range_end_val) / end_mask;
+                    // the value of the digits after the initial rep_digits
+                    let start_range_end_val = self.start % end_mask;
+                    // the value of the first rep_digits digits
+                    let start_range_start_val = (self.start - start_range_end_val) / end_mask;
                     trace!(
-                        nreps,
+                        nrepetitions,
                         rep_digits, end_mask, start_range_start_val, start_range_end_val
                     );
+
                     let mut fragment = start_range_start_val;
                     if total_digits != start_digits {
-                        // the starting range has fewer digits than the numbers we're currently looking at. Just start at the lowest value number with rep_digits
+                        // If the starting range had fewer digits than the
+                        // numbers we're currently looking at, just start at
+                        // the lowest value number with rep_digits. for example,
+                        // if we're iterating through a range of 91-150, when
+                        // we are looking at 3-digit numbers, we don't want to
+                        // start at 91, we instead want to start at 100 (the
+                        // lowest 3-digit number)
                         fragment = 10_i64.pow(rep_digits - 1);
                     }
-                    loop {
-                        if let Some(test_id) = build_test_value(fragment, rep_digits, nreps) {
-                            if test_id > self.end {
-                                trace!(test_id, "out of range, aborting...");
-                                break;
-                            }
-                            if self.in_range(test_id) {
-                                trace!(test_id, "Found invalid id");
-                                invalid_ids.insert(test_id);
-                            }
-                            fragment += 1
-                        } else {
+
+                    // now loop through and build numbers with repeated
+                    // rep_digits, starting with fragment, incrementing with
+                    // each loop until we exceed the end of the range.
+                    while let Some(test_id) = build_test_value(fragment, rep_digits, nrepetitions) {
+                        if test_id > self.end {
+                            trace!(test_id, "test value is too high, aborting loop...");
                             break;
                         }
+                        if self.in_range(test_id) {
+                            trace!(test_id, "Found invalid id");
+                            invalid_ids.insert(test_id);
+                        }
+                        fragment += 1
                     }
                 }
             }
