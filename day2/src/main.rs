@@ -1,15 +1,26 @@
-use tracing::{debug, info, instrument, trace};
+use std::collections::HashSet;
+
+use tracing::{debug, instrument, trace};
 
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
     let input = std::fs::read_to_string("input")?;
     let ranges = parse(&input)?;
     let sum: i64 = ranges
-        .into_iter()
+        .iter()
         .filter_map(|range| range.find_invalid_ids())
         .flatten()
         .sum();
     println!("Part 1: {sum}");
+    let sum: i64 = ranges
+        .into_iter()
+        .filter_map(|range| range.find_invalid_ids_2())
+        .flatten()
+        // filter out duplicates
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .sum();
+    println!("Part 2: {sum}");
     Ok(())
 }
 
@@ -23,7 +34,80 @@ fn is_odd(val: u32) -> bool {
     val.rem_euclid(2) != 0
 }
 
+#[instrument(ret, level = "trace")]
+fn build_test_value(fragment: i64, rep_digits: u32, nreps: u32) -> Option<i64> {
+    if fragment >= 10_i64.pow(rep_digits) {
+        return None;
+    }
+    let mut res: i64 = 0;
+    for i in 0..nreps {
+        res += fragment * 10_i64.pow(i * rep_digits);
+    }
+    Some(res)
+}
+
 impl Range {
+    #[instrument(ret, level = "debug")]
+    pub fn find_invalid_ids_2(&self) -> Option<HashSet<i64>> {
+        let mut invalid_ids = HashSet::<i64>::default();
+        let start_digits = self
+            .start
+            .checked_ilog10()
+            .expect("Couldn't calculate digits of range start")
+            + 1;
+        let end_digits = self
+            .end
+            .checked_ilog10()
+            .expect("Couldn't calculate digits of range end")
+            + 1;
+        trace!(start_digits, end_digits);
+        for total_digits in start_digits..=end_digits {
+            trace!("searching for repetitions of values with {total_digits} digits");
+            for nreps in 2..=total_digits {
+                // check if the start range can be composed by `nreps` repeated numbers
+                if total_digits.is_multiple_of(nreps) {
+                    trace!("{total_digits} is a multiple of {nreps}");
+                    // the number of digits in each repeated number
+                    let rep_digits = total_digits / nreps;
+                    // find the starting digits of the start range
+                    let end_mask = 10_i64.pow(start_digits - rep_digits);
+                    let mut start = self.start;
+                    let start_range_end_val = start % end_mask;
+                    let start_range_start_val = (start - start_range_end_val) / end_mask;
+                    trace!(
+                        nreps,
+                        rep_digits, end_mask, start_range_start_val, start_range_end_val
+                    );
+                    let mut fragment = start_range_start_val;
+                    if total_digits != start_digits {
+                        // the starting range has fewer digits than the numbers we're currently looking at. Just start at the lowest value number with rep_digits
+                        fragment = 10_i64.pow(rep_digits - 1);
+                    }
+                    loop {
+                        if let Some(test_id) = build_test_value(fragment, rep_digits, nreps) {
+                            if test_id > self.end {
+                                trace!(test_id, "out of range, aborting...");
+                                break;
+                            }
+                            if self.in_range(test_id) {
+                                trace!(test_id, "Found invalid id");
+                                invalid_ids.insert(test_id);
+                            }
+                            fragment += 1
+                        } else {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        if invalid_ids.is_empty() {
+            None
+        } else {
+            Some(invalid_ids)
+        }
+    }
+
     #[instrument(ret, level = "trace")]
     pub fn find_invalid_ids(&self) -> Option<Vec<i64>> {
         let mut invalid_ids = Vec::default();
@@ -88,7 +172,7 @@ impl Range {
                 break;
             }
             if self.in_range(id) {
-                info!(id, ?self, "Found invalid id");
+                trace!(id, ?self, "Found invalid id");
                 invalid_ids.push(id);
             }
         }
@@ -138,7 +222,7 @@ mod test {
     }
 
     #[test_log::test]
-    fn test_examples() {
+    fn test_part1() {
         let ranges = parse(EXAMPLE_INPUT).expect("Failed to parse input");
         let mut invalid_ids = Vec::default();
         for range in ranges {
@@ -149,5 +233,19 @@ mod test {
 
         assert_eq!(8, invalid_ids.len());
         assert_eq!(1227775554_i64, invalid_ids.into_iter().sum());
+    }
+
+    #[test_log::test]
+    fn test_part2() {
+        let ranges = parse(EXAMPLE_INPUT).expect("Failed to parse input");
+        let mut invalid_ids = Vec::default();
+        for range in ranges {
+            if let Some(ids) = range.find_invalid_ids_2() {
+                invalid_ids.extend(ids.into_iter());
+            }
+        }
+
+        assert_eq!(13, invalid_ids.len());
+        assert_eq!(4174379265_i64, invalid_ids.into_iter().sum());
     }
 }
