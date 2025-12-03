@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, time::SystemTime};
 
 use tracing::{debug, instrument, trace};
 
@@ -6,12 +6,14 @@ fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
     let input = std::fs::read_to_string("input")?;
     let ranges = parse(&input)?;
+    let start = SystemTime::now();
     let sum: i64 = ranges
         .iter()
         .filter_map(|range| range.find_invalid_ids())
         .flatten()
         .sum();
-    println!("Part 1: {sum}");
+    println!("Part 1: {sum} (time: {:?})", start.elapsed()?);
+    let start = SystemTime::now();
     let sum: i64 = ranges
         .into_iter()
         .filter_map(|range| range.find_invalid_ids_2())
@@ -20,7 +22,7 @@ fn main() -> anyhow::Result<()> {
         .collect::<HashSet<_>>()
         .into_iter()
         .sum();
-    println!("Part 2: {sum}");
+    println!("Part 2: {sum} (time: {:?})", start.elapsed()?);
     Ok(())
 }
 
