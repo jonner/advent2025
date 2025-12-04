@@ -4,22 +4,40 @@ use std::{
 };
 
 use itertools::Itertools;
-use tracing::instrument;
+use tracing::{debug, instrument, trace};
 
-fn time<T, F: Fn() -> T>(f: F) -> (T, Duration) {
+fn time<T, F: FnOnce() -> T>(f: F) -> (T, Duration) {
     let start = SystemTime::now();
     let res = f();
     (res, start.elapsed().expect("Failed to get elapsed time"))
 }
 
 fn main() -> anyhow::Result<()> {
+    tracing_subscriber::fmt::init();
     let input = std::fs::read_to_string("input")?;
-    let map = Map::parse(&input)?;
-    let (output, elapsed) = time(|| map.print_accessible_locations());
-    println!("Part 1:\n{output}\ntime: {elapsed:?}");
+    let (map, elapsed) = time(|| Map::parse(&input));
+    let map = map?;
+    println!("Parse time {elapsed:?}");
     let (nlocs, elapsed) = time(|| map.find_accessible_locations().len());
     println!("Part 1: {nlocs} (time: {elapsed:?})");
+    let (nlocs, elapsed) = time(move || part2(map));
+    println!("Part 2: {nlocs} (time: {elapsed:?})");
     Ok(())
+}
+
+fn part2(mut map: Map) -> usize {
+    let mut total = 0;
+    loop {
+        let locs = map.find_accessible_locations();
+        if locs.is_empty() {
+            break;
+        }
+        total += locs.len();
+        trace!(?locs, "Removing accessible locations");
+        map.locations = &map.locations - &locs;
+    }
+
+    total
 }
 
 #[derive(Debug)]
@@ -54,8 +72,8 @@ impl Map {
     }
 
     #[instrument(ret, level = "debug", skip(self))]
-    fn find_accessible_locations(&self) -> Vec<(usize, usize)> {
-        let mut accessible = Vec::default();
+    fn find_accessible_locations(&self) -> HashSet<(usize, usize)> {
+        let mut accessible = HashSet::default();
         for (x, y) in self.locations.iter() {
             if self
                 .adjacent_positions(*x, *y)
@@ -64,7 +82,7 @@ impl Map {
                 .count()
                 < 4
             {
-                accessible.push((*x, *y));
+                accessible.insert((*x, *y));
             }
         }
         accessible
@@ -80,7 +98,7 @@ impl Map {
             .collect()
     }
 
-    fn print_accessible_locations(&self) -> String {
+    fn _print_accessible_locations(&self) -> String {
         let mut output = String::with_capacity((self.width + 1) * self.height);
         let locs = self.find_accessible_locations();
         for y in 0..self.height {
@@ -134,6 +152,6 @@ mod test {
         let map = Map::parse(EXAMPLE_INPUT).expect("Failed to parse input");
         let locs = map.find_accessible_locations();
         assert_eq!(13, locs.len());
-        println!("{}", map.print_accessible_locations());
+        println!("{}", map._print_accessible_locations());
     }
 }
