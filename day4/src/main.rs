@@ -41,10 +41,10 @@ fn part2(mut map: Map) -> usize {
         map.locations.remove(&pos);
 
         // Check all neighbors - they might have just become accessible
-        for neighbor in map.adjacent_positions(pos.0, pos.1) {
+        for neighbor in map.adjacent_positions(pos) {
             if !removed.contains(&neighbor)
                 && map.locations.contains(&neighbor)
-                && map.is_accessible(neighbor.0, neighbor.1)
+                && map.is_accessible(neighbor)
             {
                 queue.push_back(neighbor);
             }
@@ -54,11 +54,17 @@ fn part2(mut map: Map) -> usize {
     removed.len()
 }
 
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+struct Point {
+    x: usize,
+    y: usize,
+}
+
 #[derive(Debug)]
 struct Map {
     width: usize,
     height: usize,
-    locations: HashSet<(usize, usize)>,
+    locations: HashSet<Point>,
 }
 
 impl Map {
@@ -73,7 +79,7 @@ impl Map {
                 line.chars()
                     .enumerate()
                     .filter_map(move |(x, ch)| match ch {
-                        '@' => Some((x, y)),
+                        '@' => Some(Point { x, y }),
                         _ => None,
                     })
             })
@@ -85,8 +91,8 @@ impl Map {
         })
     }
 
-    fn is_accessible(&self, x: usize, y: usize) -> bool {
-        self.adjacent_positions(x, y)
+    fn is_accessible(&self, point: Point) -> bool {
+        self.adjacent_positions(point)
             .iter()
             .filter(|p| self.locations.contains(p))
             .count()
@@ -94,23 +100,29 @@ impl Map {
     }
 
     #[instrument(ret, level = "debug", skip(self))]
-    fn find_accessible_locations(&self) -> HashSet<(usize, usize)> {
+    fn find_accessible_locations(&self) -> HashSet<Point> {
         let mut accessible = HashSet::default();
-        for (x, y) in self.locations.iter() {
-            if self.is_accessible(*x, *y) {
-                accessible.insert((*x, *y));
+        for point in self.locations.iter() {
+            if self.is_accessible(*point) {
+                accessible.insert(*point);
             }
         }
         accessible
     }
 
     #[instrument(ret, level = "trace", skip(self))]
-    fn adjacent_positions(&self, x: usize, y: usize) -> Vec<(usize, usize)> {
-        let x_ranges = x.saturating_sub(1)..=self.width.min(x + 1);
-        let y_ranges = y.saturating_sub(1)..=self.height.min(y + 1);
+    fn adjacent_positions(&self, point: Point) -> Vec<Point> {
+        let x_ranges = point.x.saturating_sub(1)..=self.width.min(point.x + 1);
+        let y_ranges = point.y.saturating_sub(1)..=self.height.min(point.y + 1);
         x_ranges
             .cartesian_product(y_ranges)
-            .filter(|point| point.0 != x || point.1 != y)
+            .filter_map(|(x, y)| {
+                if x != point.x || y != point.y {
+                    Some(Point { x, y })
+                } else {
+                    None
+                }
+            })
             .collect()
     }
 
@@ -119,7 +131,7 @@ impl Map {
         let locs = self.find_accessible_locations();
         for y in 0..self.height {
             for x in 0..self.width {
-                let point = (x, y);
+                let point = Point { x, y };
                 if locs.contains(&point) {
                     output.push('x');
                 } else if self.locations.contains(&point) {
