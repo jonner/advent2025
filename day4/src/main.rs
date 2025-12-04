@@ -1,10 +1,10 @@
 use std::{
-    collections::HashSet,
+    collections::{HashSet, VecDeque},
     time::{Duration, SystemTime},
 };
 
 use itertools::Itertools;
-use tracing::{debug, instrument, trace};
+use tracing::instrument;
 
 fn time<T, F: FnOnce() -> T>(f: F) -> (T, Duration) {
     let start = SystemTime::now();
@@ -26,18 +26,32 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn part2(mut map: Map) -> usize {
-    let mut total = 0;
-    loop {
-        let locs = map.find_accessible_locations();
-        if locs.is_empty() {
-            break;
+    // Initialize queue with all initially accessible locations
+    let mut queue: VecDeque<_> = map.find_accessible_locations().into_iter().collect();
+    let mut removed = HashSet::new();
+
+    while let Some(pos) = queue.pop_front() {
+        // Skip if already removed
+        if removed.contains(&pos) {
+            continue;
         }
-        total += locs.len();
-        trace!(?locs, "Removing accessible locations");
-        map.locations = &map.locations - &locs;
+
+        // Remove this location
+        removed.insert(pos);
+        map.locations.remove(&pos);
+
+        // Check all neighbors - they might have just become accessible
+        for neighbor in map.adjacent_positions(pos.0, pos.1) {
+            if !removed.contains(&neighbor)
+                && map.locations.contains(&neighbor)
+                && map.is_accessible(neighbor.0, neighbor.1)
+            {
+                queue.push_back(neighbor);
+            }
+        }
     }
 
-    total
+    removed.len()
 }
 
 #[derive(Debug)]
@@ -71,17 +85,19 @@ impl Map {
         })
     }
 
+    fn is_accessible(&self, x: usize, y: usize) -> bool {
+        self.adjacent_positions(x, y)
+            .iter()
+            .filter(|p| self.locations.contains(p))
+            .count()
+            < 4
+    }
+
     #[instrument(ret, level = "debug", skip(self))]
     fn find_accessible_locations(&self) -> HashSet<(usize, usize)> {
         let mut accessible = HashSet::default();
         for (x, y) in self.locations.iter() {
-            if self
-                .adjacent_positions(*x, *y)
-                .iter()
-                .filter(|p| self.locations.contains(p))
-                .count()
-                < 4
-            {
+            if self.is_accessible(*x, *y) {
                 accessible.insert((*x, *y));
             }
         }
