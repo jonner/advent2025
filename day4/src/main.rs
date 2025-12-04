@@ -78,10 +78,7 @@ impl Map {
             .flat_map(|(y, line)| {
                 line.chars()
                     .enumerate()
-                    .filter_map(move |(x, ch)| match ch {
-                        '@' => Some(Point { x, y }),
-                        _ => None,
-                    })
+                    .filter_map(move |(x, ch)| (ch == '@').then_some(Point { x, y }))
             })
             .collect();
         Ok(Self {
