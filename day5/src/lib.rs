@@ -2,7 +2,7 @@ use anyhow::anyhow;
 use nom::{
     IResult, Parser,
     bytes::complete::tag,
-    character::complete::{self, newline},
+    character::complete::{self, line_ending},
     multi::{count, separated_list1},
     sequence::separated_pair,
 };
@@ -99,9 +99,9 @@ pub(crate) fn parse_range(input: &str) -> IResult<&str, Range> {
 
 pub(crate) fn parse(input: &str) -> anyhow::Result<Database> {
     let (_, database) = separated_pair(
-        separated_list1(newline, parse_range),
-        count(newline, 2),
-        separated_list1(newline, complete::u64),
+        separated_list1(line_ending, parse_range),
+        count(line_ending, 2),
+        separated_list1(line_ending, complete::u64),
     )
     .map(|(ranges, ids)| Database {
         fresh: ranges,
