@@ -6,23 +6,31 @@ use nom::{
     multi::{count, separated_list1},
     sequence::separated_pair,
 };
+use tracing::{instrument, trace};
 
-pub fn part1() -> anyhow::Result<()> {
-    let input = std::fs::read_to_string("input")?;
-    let database = Database::from_string(&input)?;
-    println!("Part 1: {}", database.fresh_ingredients().len());
-    Ok(())
+pub fn part1(input: &str) -> anyhow::Result<usize> {
+    let database = Database::from_string(input)?;
+    Ok(database.fresh_ingredients().len())
 }
 
-#[derive(Debug, PartialEq)]
+pub fn part2(input: &str) -> anyhow::Result<u64> {
+    let database = Database::from_string(input)?;
+    Ok(database.fresh_ingredient_ids())
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub(crate) struct Range {
     pub(crate) lower: u64,
     pub(crate) upper: u64,
 }
 
 impl Range {
-    pub fn contains(&self, id: u64) -> bool {
-        id >= self.lower && id <= self.upper
+    pub fn contains(&self, id: &u64) -> bool {
+        (self.lower..=self.upper).contains(id)
+    }
+
+    pub fn n_ids(&self) -> u64 {
+        (self.lower..=self.upper).count() as u64
     }
 }
 
@@ -40,12 +48,46 @@ impl Database {
     pub fn fresh_ingredients(&self) -> Vec<u64> {
         self.ingredients
             .iter()
-            .filter(|&item| self.is_fresh(*item))
+            .filter(|&item| self.is_fresh(item))
             .copied()
             .collect()
     }
-    pub(crate) fn is_fresh(&self, id: u64) -> bool {
-        self.fresh.iter().any(|f| f.contains(id))
+    pub(crate) fn is_fresh(&self, id: &u64) -> bool {
+        self.fresh.iter().any(|range| range.contains(id))
+    }
+
+    #[instrument(ret, skip(self), level = "debug")]
+    fn fresh_ingredient_ids(&self) -> u64 {
+        // consolidate fresh ingredient ranges
+        let mut consolidated_ranges: Vec<Range> = Vec::default();
+        for range in self.fresh.iter() {
+            let (lowers, uppers): (Vec<_>, Vec<_>) = consolidated_ranges
+                .extract_if(.., |consolidated_range| {
+                    range.lower <= consolidated_range.upper
+                        && range.upper >= consolidated_range.lower
+                })
+                .map(|r| (r.lower, r.upper))
+                .unzip();
+            trace!(?range, ?lowers, ?uppers);
+            if let (Some(lower), Some(upper)) = (lowers.into_iter().min(), uppers.into_iter().max())
+            {
+                let adjusted_range = Range {
+                    lower: lower.min(range.lower),
+                    upper: upper.max(range.upper),
+                };
+                trace!(
+                    ?adjusted_range,
+                    items = adjusted_range.n_ids(),
+                    "Creating a new consolidated range"
+                );
+                consolidated_ranges.push(adjusted_range);
+            } else {
+                trace!(?range, "Using this range");
+                consolidated_ranges.push(*range)
+            }
+        }
+        trace!(?consolidated_ranges);
+        consolidated_ranges.into_iter().map(|r| r.n_ids()).sum()
     }
 }
 
@@ -92,22 +134,22 @@ pub(crate) mod test {
     fn test_parse() {
         let database = parse(EXAMPLE_INPUT).expect("Failed to parse");
         assert_eq!(6, database.ingredients.len());
-        assert!(database.is_fresh(3));
-        assert!(database.is_fresh(4));
-        assert!(database.is_fresh(5));
-        assert!(!database.is_fresh(6));
-        assert!(database.is_fresh(10));
-        assert!(database.is_fresh(11));
-        assert!(database.is_fresh(12));
-        assert!(database.is_fresh(13));
-        assert!(database.is_fresh(14));
-        assert!(database.is_fresh(15));
-        assert!(database.is_fresh(16));
-        assert!(database.is_fresh(17));
-        assert!(database.is_fresh(18));
-        assert!(database.is_fresh(19));
-        assert!(database.is_fresh(20));
-        assert!(!database.is_fresh(21));
+        assert!(database.is_fresh(&3));
+        assert!(database.is_fresh(&4));
+        assert!(database.is_fresh(&5));
+        assert!(!database.is_fresh(&6));
+        assert!(database.is_fresh(&10));
+        assert!(database.is_fresh(&11));
+        assert!(database.is_fresh(&12));
+        assert!(database.is_fresh(&13));
+        assert!(database.is_fresh(&14));
+        assert!(database.is_fresh(&15));
+        assert!(database.is_fresh(&16));
+        assert!(database.is_fresh(&17));
+        assert!(database.is_fresh(&18));
+        assert!(database.is_fresh(&19));
+        assert!(database.is_fresh(&20));
+        assert!(!database.is_fresh(&21));
     }
 
     #[test]
@@ -121,5 +163,12 @@ pub(crate) mod test {
         assert!(!fresh.contains(&1));
         assert!(!fresh.contains(&8));
         assert!(!fresh.contains(&32));
+    }
+
+    #[test]
+    fn test_part2() {
+        let database = parse(EXAMPLE_INPUT).expect("Failed to parse");
+        let fresh = database.fresh_ingredient_ids();
+        assert_eq!(14, fresh);
     }
 }
