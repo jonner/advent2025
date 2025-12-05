@@ -101,7 +101,10 @@ fn parse(input: &str) -> Vec<BatteryBank> {
     input
         .lines()
         .map(|line| BatteryBank {
-            cells: line.chars().map(|ch| ch as u8).collect::<Vec<_>>(),
+            cells: line
+                .chars()
+                .map(|ch| ch.to_digit(10).expect("Failed to find a digit") as u8)
+                .collect::<Vec<_>>(),
         })
         .collect::<Vec<_>>()
 }
