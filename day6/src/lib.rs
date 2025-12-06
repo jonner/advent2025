@@ -8,8 +8,10 @@ use nom::{
 use std::iter::Iterator;
 use tracing::instrument;
 
-pub fn part1() -> anyhow::Result<String> {
-    todo!()
+pub fn part1(input: &str) -> anyhow::Result<String> {
+    let problems = parse(input);
+    let sum: i64 = problems.into_iter().map(|problem| problem.compute()).sum();
+    Ok(sum.to_string())
 }
 
 #[derive(Debug)]
@@ -36,20 +38,21 @@ where
 
 #[derive(Debug)]
 pub struct Problem {
-    numbers: Vec<i64>,
+    args: Vec<i64>,
     op: Operation,
 }
 
 impl Problem {
+    #[instrument(ret, level = "trace")]
     pub fn compute(&self) -> i64 {
         match self.op {
-            Operation::Add => self.numbers.iter().sum(),
-            Operation::Multiply => self.numbers.iter().product(),
+            Operation::Add => self.args.iter().sum(),
+            Operation::Multiply => self.args.iter().product(),
         }
     }
 }
 
-#[instrument(ret, level = "debug")]
+#[instrument(ret, level = "trace")]
 pub fn parse(input: &str) -> Vec<Problem> {
     let (_, problems) = separated_pair(
         separated_list1(
@@ -72,7 +75,7 @@ pub fn parse(input: &str) -> Vec<Problem> {
     .map(|(args, ops)| {
         args.into_iter()
             .zip(ops.into_iter())
-            .map(|(args, op)| Problem { numbers: args, op })
+            .map(|(args, op)| Problem { args, op })
             .collect::<Vec<_>>()
     })
     .parse(input)
