@@ -1,4 +1,7 @@
-use std::{collections::HashSet, ops::Add};
+use std::{
+    collections::{HashMap, HashSet},
+    ops::Add,
+};
 
 use anyhow::anyhow;
 use tracing::{instrument, trace};
@@ -10,8 +13,9 @@ pub fn part1(input: &str) -> anyhow::Result<String> {
 }
 
 pub fn part2(input: &str) -> anyhow::Result<String> {
-    let manifold = Manifold::parse(input)?;
-    todo!()
+    let mut manifold = Manifold::parse(input)?;
+    let timelines = manifold.timelines();
+    Ok(timelines.to_string())
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
@@ -51,6 +55,7 @@ pub struct Manifold {
 }
 
 impl Manifold {
+    #[instrument(ret, skip(input), level = "debug")]
     pub fn parse(input: &str) -> anyhow::Result<Self> {
         let data = input
             .lines()
@@ -98,7 +103,7 @@ impl Manifold {
     }
 
     #[instrument(ret, skip(self), level = "trace")]
-    pub fn step_beam(&mut self) -> Option<u32> {
+    pub fn step_beam(&mut self) -> Option<u64> {
         if self.beams.is_empty() {
             trace!("starting beam...");
             self.beams.insert(self.start);
@@ -127,12 +132,60 @@ impl Manifold {
         Some(splits)
     }
 
-    pub fn run(&mut self) -> u32 {
+    pub fn run(&mut self) -> u64 {
         let mut total_splits = 0;
         while let Some(splits) = self.step_beam() {
             total_splits += splits;
         }
         total_splits
+    }
+
+    #[instrument(ret, skip(self))]
+    pub fn step_timeline(&self, timelines: Timelines) -> Option<Timelines> {
+        let mut new_timelines = Timelines::default();
+        for (cur_point, multiples) in timelines.data.iter() {
+            let next_point = *cur_point + DOWN;
+            if next_point.y > self.height() {
+                return None;
+            }
+            if self.at(&next_point) == Symbol::Splitter {
+                new_timelines.insert(next_point + RIGHT, *multiples);
+                new_timelines.insert(next_point + LEFT, *multiples);
+            } else {
+                new_timelines.insert(next_point, *multiples)
+            }
+        }
+        Some(new_timelines)
+    }
+
+    #[instrument(ret, skip(self))]
+    pub fn timelines(&mut self) -> u64 {
+        let mut ntimelines = 1;
+        let mut timelines = {
+            let mut t = Timelines::default();
+            t.insert(self.start, 1);
+            t
+        };
+        while let Some(new_timelines) = self.step_timeline(timelines) {
+            ntimelines = new_timelines.data.values().sum();
+            timelines = new_timelines;
+        }
+        ntimelines
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct Timelines {
+    pub data: HashMap<Point, u64>,
+}
+
+impl Timelines {
+    #[instrument]
+    pub fn insert(&mut self, point: Point, num: u64) {
+        self.data
+            .entry(point)
+            .and_modify(|val| *val += num)
+            .or_insert(num);
     }
 }
 
@@ -171,5 +224,11 @@ mod test {
     fn test_part1() {
         let mut manifold = Manifold::parse(EXAMPLE_INPUT).expect("Failed to parse");
         assert_eq!(21, manifold.run());
+    }
+
+    #[test]
+    fn test_part2() {
+        let mut manifold = Manifold::parse(EXAMPLE_INPUT).expect("Failed to parse");
+        assert_eq!(40, manifold.timelines());
     }
 }
