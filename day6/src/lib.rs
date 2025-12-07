@@ -4,7 +4,7 @@ use nom::{
     branch::alt,
     character::complete::{self, char, line_ending, space0, space1},
     multi::separated_list1,
-    sequence::{pair, separated_pair},
+    sequence::{delimited, pair, separated_pair},
 };
 use std::iter::Iterator;
 use tracing::{debug, instrument};
@@ -120,8 +120,8 @@ pub fn parse2(input: &str) -> Vec<Problem> {
 pub fn parse(input: &str) -> IResult<&str, Vec<Problem>> {
     separated_pair(
         separated_list1(
-            pair(space0, line_ending::<&str, nom::error::Error<&str>>),
-            separated_list1(space1, complete::i64),
+            line_ending::<&str, nom::error::Error<&str>>,
+            delimited(space0, separated_list1(space1, complete::i64), space0),
         )
         .map(|vv| {
             let vec_of_iters = vv.into_iter().map(|v| v.into_iter()).collect();
