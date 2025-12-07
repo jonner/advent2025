@@ -1,6 +1,6 @@
 use itertools::Itertools;
 use nom::{
-    Parser,
+    IResult, Parser,
     branch::alt,
     character::complete::{self, char, line_ending, space0, space1},
     multi::separated_list1,
@@ -10,7 +10,7 @@ use std::iter::Iterator;
 use tracing::{debug, instrument};
 
 pub fn part1(input: &str) -> anyhow::Result<String> {
-    let problems = parse(input);
+    let (_, problems) = parse(input).expect("parsing failed");
     let sum: i64 = problems.into_iter().map(|problem| problem.compute()).sum();
     Ok(sum.to_string())
 }
@@ -117,8 +117,8 @@ pub fn parse2(input: &str) -> Vec<Problem> {
 }
 
 #[instrument(ret, level = "trace")]
-pub fn parse(input: &str) -> Vec<Problem> {
-    let (_, problems) = separated_pair(
+pub fn parse(input: &str) -> IResult<&str, Vec<Problem>> {
+    separated_pair(
         separated_list1(
             pair(space0, line_ending::<&str, nom::error::Error<&str>>),
             separated_list1(space1, complete::i64),
@@ -143,8 +143,6 @@ pub fn parse(input: &str) -> Vec<Problem> {
             .collect::<Vec<_>>()
     })
     .parse(input)
-    .expect("Failed to parse");
-    problems
 }
 
 #[cfg(test)]
@@ -160,7 +158,7 @@ mod test {
 
     #[test]
     fn test_parse() {
-        let problems = parse(EXAMPLE_INPUT);
+        let (_, problems) = parse(EXAMPLE_INPUT).expect("parsing failed");
         assert_eq!(4, problems.len());
         assert_eq!(33210, problems[0].compute());
         assert_eq!(490, problems[1].compute());
