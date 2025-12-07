@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use nom::{
     Parser,
     branch::alt,
@@ -6,10 +7,16 @@ use nom::{
     sequence::{pair, separated_pair},
 };
 use std::iter::Iterator;
-use tracing::instrument;
+use tracing::{debug, instrument};
 
 pub fn part1(input: &str) -> anyhow::Result<String> {
     let problems = parse(input);
+    let sum: i64 = problems.into_iter().map(|problem| problem.compute()).sum();
+    Ok(sum.to_string())
+}
+
+pub fn part2(input: &str) -> anyhow::Result<String> {
+    let problems = parse2(input);
     let sum: i64 = problems.into_iter().map(|problem| problem.compute()).sum();
     Ok(sum.to_string())
 }
@@ -20,7 +27,7 @@ pub enum Operation {
     Multiply,
 }
 
-// Source - https://stackoverflow.com/a
+// Source - https://stackoverflow.com/a/55292215
 // Posted by Shepmaster
 // Retrieved 2025-12-06, License - CC BY-SA 4.0
 struct Multizip<T>(Vec<T>);
@@ -50,6 +57,63 @@ impl Problem {
             Operation::Multiply => self.args.iter().product(),
         }
     }
+}
+
+#[instrument(ret, level = "trace")]
+pub fn parse2(input: &str) -> Vec<Problem> {
+    let chariters = input.lines().map(|l| l.chars()).collect::<Vec<_>>();
+    // zip the same column of each line into a vector. Essentially transposing
+    // between lines and columns
+    let cols = Multizip(chariters).collect::<Vec<_>>();
+    debug!(?cols);
+    let problems = cols
+        .iter()
+        // process the line from the back to the front
+        .rev()
+        .map(|col| {
+            debug!(?col);
+            (
+                // we know the operator is in the last row, so construct a
+                // string of the characters in the first lines...
+                col.iter()
+                    .take(col.len() - 1)
+                    .collect::<String>()
+                    .trim()
+                    .parse::<i64>(),
+                // ...and convert the last line into an Operator (if there is one)
+                col.iter().last().and_then(|c| match c {
+                    '*' => Some(Operation::Multiply),
+                    '+' => Some(Operation::Add),
+                    ' ' => None,
+                    _ => panic!("Unexpected operation"),
+                }),
+            )
+        })
+        // Process numbers until we get totally a blank column (indicated by a
+        // ParseIntError), and construct a Problem object from them
+        .batching(|it| {
+            let mut problemop: Option<Operation> = None;
+            let mut args: Vec<i64> = Vec::default();
+            loop {
+                let Some((iparseresult, op)) = it.next() else {
+                    break;
+                };
+                debug!(?iparseresult, ?op);
+                if let Some(oper) = op {
+                    problemop = Some(oper);
+                }
+                match iparseresult {
+                    Ok(n) => args.push(n),
+                    Err(_e) => break,
+                }
+            }
+            Some(args)
+                .zip(problemop)
+                .map(|(args, op)| Problem { args, op })
+        })
+        .collect::<Vec<_>>();
+    debug!(?problems);
+    problems
 }
 
 #[instrument(ret, level = "trace")]
@@ -89,8 +153,8 @@ mod test {
     use test_log::test;
 
     const EXAMPLE_INPUT: &str = "123 328  51 64 
-45 64  387 23 
-6 98  215 314
+ 45 64  387 23 
+  6 98  215 314
 *   +   *   +  
 ";
 
@@ -102,5 +166,15 @@ mod test {
         assert_eq!(490, problems[1].compute());
         assert_eq!(4243455, problems[2].compute());
         assert_eq!(401, problems[3].compute());
+    }
+
+    #[test]
+    fn test_parse2() {
+        let problems = parse2(EXAMPLE_INPUT);
+        assert_eq!(4, problems.len());
+        assert_eq!(1058, problems[0].compute());
+        assert_eq!(3253600, problems[1].compute());
+        assert_eq!(625, problems[2].compute());
+        assert_eq!(8544, problems[3].compute());
     }
 }
